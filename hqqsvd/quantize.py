@@ -47,7 +47,7 @@ def quantize(W, svd_rank:int=128, svd_steps:int=8, group_size:int=128, nbits:int
     W_q = torch.clamp(W_q, min_v, max_v).to(torch.uint8)
     W_q = pack(W_q, nbits)
     scale = 1.0/scale.reshape((shape[0], -1, 1))
-    zero = zero.reshape((shape[0], -1, 1))
+    zero = -zero.reshape((shape[0], -1, 1)) * scale
     return W_q, svd_up.to(dtype), svd_down.to(dtype), scale.to(dtype), zero.to(dtype)
 
 
