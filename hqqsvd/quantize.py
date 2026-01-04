@@ -20,7 +20,7 @@ def apply_svdquant(weight: torch.FloatTensor, rank: int = 32, niter: int = 8) ->
 
 
 @torch.no_grad()
-def quantize(W, svd_rank:int=32, svd_steps:int=8, group_size:int=128, nbits:int=4):
+def quantize(W, svd_rank:int=128, svd_steps:int=8, group_size:int=128, nbits:int=4):
     dtype = W.dtype
     shape = W.shape
 

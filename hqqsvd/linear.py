@@ -27,7 +27,7 @@ class HQQSVDLinear(torch.nn.Module):
     def from_linear(
         cls,
         linear: torch.nn.Linear,
-        svd_rank: int = 32,
+        svd_rank: int = 128,
         svd_steps: int = 8,
         group_size: int = 128,
         nbits: int = 4,
