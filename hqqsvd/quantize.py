@@ -51,7 +51,6 @@ def quantize(W, svd_rank:int=128, svd_steps:int=8, group_size:int=128, nbits:int
     return W_q, svd_up.to(dtype), svd_down.to(dtype), scale.to(dtype), zero.to(dtype)
 
 
-@torch.compile
 @torch.no_grad()
 def dequantize(W_q, svd_up, svd_down, scale, zero, q_shape, o_shape, nbits:int):
     W_f = unpack(W_q, q_shape, nbits).to(dtype=scale.dtype)

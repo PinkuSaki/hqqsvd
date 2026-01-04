@@ -1,4 +1,6 @@
 import torch
+torch._dynamo.config.cache_size_limit = max(8192, getattr(torch._dynamo.config, "cache_size_limit", 0))
+torch._dynamo.config.accumulated_recompile_limit = max(8192, getattr(torch._dynamo.config, "accumulated_recompile_limit", 0))
 from .quantize import quantize, dequantize
 
 
@@ -51,7 +53,6 @@ class HQQSVDLinear(torch.nn.Module):
             self._nbits
         )
 
-    @torch.compile
+    @torch.compile(fullgraph=True)
     def forward(self, x):
-        W_f = self.dequantize()
-        return torch.nn.functional.linear(x, W_f, self.bias)
+        return torch.nn.functional.linear(x, self.dequantize(), self.bias)
