@@ -1,6 +1,5 @@
 import torch
 
-@torch.compile
 def pack_uint7(tensor: torch.ByteTensor) -> torch.ByteTensor:
     packed_tensor = tensor.contiguous().view(-1, 8)
     packed_tensor = torch.bitwise_or(
@@ -23,7 +22,6 @@ def pack_uint7(tensor: torch.ByteTensor) -> torch.ByteTensor:
     )
     return packed_tensor
 
-@torch.compile
 def pack_uint6(tensor: torch.ByteTensor) -> torch.ByteTensor:
     packed_tensor = tensor.contiguous().view(-1, 4)
     packed_tensor = torch.cat(
@@ -47,7 +45,6 @@ def pack_uint6(tensor: torch.ByteTensor) -> torch.ByteTensor:
     )
     return packed_tensor
 
-@torch.compile
 def pack_uint5(tensor: torch.ByteTensor) -> torch.ByteTensor:
     packed_tensor = tensor.contiguous().view(-1, 8)
     packed_tensor = torch.cat(
@@ -72,13 +69,11 @@ def pack_uint5(tensor: torch.ByteTensor) -> torch.ByteTensor:
     )
     return packed_tensor
 
-@torch.compile
 def pack_uint4(tensor: torch.ByteTensor) -> torch.ByteTensor:
     packed_tensor = tensor.contiguous().view(-1, 2)
     packed_tensor = torch.bitwise_or(packed_tensor[:, 0], torch.bitwise_left_shift(packed_tensor[:, 1], 4))
     return packed_tensor
 
-@torch.compile
 def pack_uint3(tensor: torch.ByteTensor) -> torch.ByteTensor:
     packed_tensor = tensor.contiguous().view(-1, 8)
     packed_tensor = torch.bitwise_or(
@@ -96,7 +91,6 @@ def pack_uint3(tensor: torch.ByteTensor) -> torch.ByteTensor:
     )
     return packed_tensor
 
-@torch.compile
 def pack_uint2(tensor: torch.ByteTensor) -> torch.ByteTensor:
     packed_tensor = tensor.contiguous().view(-1, 4)
     packed_tensor = torch.bitwise_or(
@@ -105,7 +99,6 @@ def pack_uint2(tensor: torch.ByteTensor) -> torch.ByteTensor:
     )
     return packed_tensor
 
-@torch.compile
 def pack_uint1(tensor: torch.Tensor) -> torch.Tensor:
     packed_tensor = tensor.contiguous().view(-1, 8)
     packed_tensor = torch.bitwise_or(
@@ -120,7 +113,6 @@ def pack_uint1(tensor: torch.Tensor) -> torch.Tensor:
     )
     return packed_tensor
 
-@torch.compile
 def unpack_uint7(packed_tensor: torch.ByteTensor, shape: torch.Size) -> torch.ByteTensor:
     result = torch.cat(
         (
@@ -149,7 +141,6 @@ def unpack_uint7(packed_tensor: torch.ByteTensor, shape: torch.Size) -> torch.By
     ).view(shape)
     return result
 
-@torch.compile
 def unpack_uint6(packed_tensor: torch.ByteTensor, shape: torch.Size) -> torch.ByteTensor:
     result = torch.cat(
         (
@@ -166,7 +157,6 @@ def unpack_uint6(packed_tensor: torch.ByteTensor, shape: torch.Size) -> torch.By
     ).view(shape)
     return result
 
-@torch.compile
 def unpack_uint5(packed_tensor: torch.ByteTensor, shape: torch.Size) -> torch.ByteTensor:
     result_bitwise_right_shift = torch.bitwise_right_shift(packed_tensor[:, :3], 5)
     result = torch.cat(
@@ -188,12 +178,10 @@ def unpack_uint5(packed_tensor: torch.ByteTensor, shape: torch.Size) -> torch.By
     ).view(shape)
     return result
 
-@torch.compile
 def unpack_uint4(packed_tensor: torch.ByteTensor, shape: torch.Size) -> torch.ByteTensor:
     result = torch.stack((torch.bitwise_and(packed_tensor, 15), torch.bitwise_right_shift(packed_tensor, 4)), dim=-1).view(shape)
     return result
 
-@torch.compile
 def unpack_uint3(packed_tensor: torch.ByteTensor, shape: torch.Size) -> torch.ByteTensor:
     result = torch.bitwise_and(
         torch.cat(
@@ -220,7 +208,6 @@ def unpack_uint3(packed_tensor: torch.ByteTensor, shape: torch.Size) -> torch.By
     ).view(shape)
     return result
 
-@torch.compile
 def unpack_uint2(packed_tensor: torch.ByteTensor, shape: torch.Size) -> torch.ByteTensor:
     result = torch.bitwise_and(
         torch.stack(
@@ -236,7 +223,6 @@ def unpack_uint2(packed_tensor: torch.ByteTensor, shape: torch.Size) -> torch.By
     ).view(shape)
     return result
 
-@torch.compile
 def unpack_uint1(packed_tensor: torch.Tensor, shape: torch.Size) -> torch.Tensor:
     result = torch.bitwise_and(
         torch.stack(

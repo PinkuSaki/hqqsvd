@@ -20,7 +20,8 @@ class HQQSVDLinear(torch.nn.Module):
         self.scale = torch.nn.Parameter(scale, False)
         self.zero_point = torch.nn.Parameter(zero_point, False)
         self.bias = torch.nn.Parameter(bias, False)
-        self.nbits = torch.nn.Parameter(torch.tensor([nbits]), False)
+        self.nbits = torch.nn.Parameter(torch.tensor([nbits]), False) # for serialization
+        self._nbits = nbits
 
     @classmethod
     def from_linear(
@@ -47,9 +48,10 @@ class HQQSVDLinear(torch.nn.Module):
             self.zero_point,
             self.q_shape,
             self.o_shape,
-            self.nbits.item()
+            self._nbits
         )
 
+    @torch.compile
     def forward(self, x):
         W_f = self.dequantize()
         return torch.nn.functional.linear(x, W_f, self.bias)
