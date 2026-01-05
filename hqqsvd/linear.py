@@ -71,7 +71,7 @@ class HQQSVDLinear(torch.nn.Module):
         self.svd_down = torch.nn.Parameter(svd_down, False)
         self.scale = torch.nn.Parameter(scale, False)
         self.zero_point = torch.nn.Parameter(zero_point, False)
-        self.bias = torch.nn.Parameter(bias, False) if isinstance(bias, torch.Tensor) else None
+        self.bias = torch.nn.Parameter(bias, False)
         self.nbits = torch.nn.Parameter(
             torch.tensor([nbits]), False
         )  # for serialization
@@ -128,10 +128,9 @@ class HQQSVDLinear(torch.nn.Module):
         scale_w = torch.amax(W_f.abs(), dim=0, keepdims=True).div_(127)
         W_q = torch.div(W_f, scale_w).round_().clamp_(-128, 127).to(dtype=torch.int8)
 
-        out = (torch._int_mm(x_q, W_q).to(dtype) * scale_x * scale_w).unsqueeze(0)
-        if self.bias is not None:
-            return out + self.bias
-        return out
+        return (torch._int_mm(x_q, W_q).to(dtype) * scale_x * scale_w).unsqueeze(
+            0
+        ) + self.bias
 
     def _forward(self, x: torch.FloatTensor):
         if self.int8_matmul and x.numel() / x.shape[-1] >= 16:
