@@ -23,7 +23,7 @@ class Lora(torch.nn.Module):
         self.strength = strength
 
     def get_weight(self, weight):
-        return weight + self.scale * self.lora_up @ self.lora_down
+        return self.scale * self.lora_up @ self.lora_down
 
 
 class ComfyLora:
