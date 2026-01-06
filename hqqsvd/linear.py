@@ -1,3 +1,4 @@
+import math
 import torch
 
 TORCH_INT_MM = False
@@ -65,35 +66,72 @@ class ComfyLora:
 class HQQSVDLinear(torch.nn.Module):
     def __init__(
         self,
-        W_q,
-        svd_up,
-        svd_down,
-        scale,
-        zero_point,
-        bias,
-        nbits,
+        in_features: int,
+        out_features: int,
+        svd_rank: int,
+        n_groups: int,
+        nbits: int,
         int8_matmul: bool = True,
+        bias: bool = True,
+        device=None,
+        dtype=torch.bfloat16,
     ):
         super().__init__()
-        self.in_features = svd_down.shape[1]
-        self.out_features = svd_up.shape[0]
-        self.svd_rank = svd_down.shape[0]
-        self.group_size = self.in_features // scale.shape[1]
-        self.n_groups = scale.shape[1]
-        self.q_shape = torch.Size((self.out_features, self.n_groups, self.group_size))
-        self.o_shape = torch.Size((self.out_features, self.in_features))
-        self.weight = torch.nn.Parameter(W_q, False)
-        self.svd_up = torch.nn.Parameter(svd_up, False)
-        self.svd_down = torch.nn.Parameter(svd_down, False)
-        self.scale = torch.nn.Parameter(scale, False)
-        self.zero_point = torch.nn.Parameter(zero_point, False)
-        self.bias = torch.nn.Parameter(bias, False)
-        self.nbits = torch.nn.Parameter(
-            torch.tensor([nbits]), False
-        )  # for serialization
+
+        assert in_features % n_groups == 0, "in_features must be divisible by n_groups"
+
+        self.in_features = in_features
+        self.out_features = out_features
+        self.svd_rank = svd_rank
+        self.n_groups = n_groups
+        self.group_size = in_features // n_groups
         self._nbits = nbits
+
+        self.q_shape = torch.Size((out_features, n_groups, self.group_size))
+        self.o_shape = torch.Size((out_features, in_features))
+
+        total_bits = out_features * in_features * nbits
+        num_bytes = (total_bits + 7) // 8  # ceil div
+
+        self.weight = torch.nn.Parameter(
+            torch.empty(num_bytes, dtype=torch.uint8, device=device),
+            requires_grad=False,
+        )
+
+        self.svd_up = torch.nn.Parameter(
+            torch.empty((out_features, svd_rank), device=device, dtype=dtype),
+            requires_grad=False,
+        )
+        self.svd_down = torch.nn.Parameter(
+            torch.empty((svd_rank, in_features), device=device, dtype=dtype),
+            requires_grad=False,
+        )
+
+        self.scale = torch.nn.Parameter(
+            torch.empty((out_features, n_groups, 1), device=device, dtype=dtype),
+            requires_grad=False,
+        )
+        self.zero_point = torch.nn.Parameter(
+            torch.empty((out_features, n_groups, 1), device=device, dtype=dtype),
+            requires_grad=False,
+        )
+
+        if bias:
+            self.bias = torch.nn.Parameter(
+                torch.empty(out_features, device=device, dtype=dtype),
+                requires_grad=False,
+            )
+        else:
+            self.register_parameter("bias", None)
+
+        self.nbits = torch.nn.Parameter(
+            torch.tensor([nbits], device=device),
+            requires_grad=False,
+        )
+
         self.int8_matmul = int8_matmul
         self.loras = {}
+
         self.forward_no_comfy = torch.compile(self._forward, fullgraph=True)
         self.forward_comfy = torch.compile(self._forward)
 
@@ -105,9 +143,23 @@ class HQQSVDLinear(torch.nn.Module):
         svd_steps: int = 8,
         group_size: int = 128,
         nbits: int = 4,
-        fast:bool=True
+        fast: bool = True,
+        int8_matmul: bool = True,
+        device="cuda",
+        dtype=torch.bfloat16,
     ):
-        return cls.from_weights(linear.weight, svd_rank, svd_steps, group_size, nbits, fast, linear.bias)
+        return cls.from_weights(
+            linear.weight,
+            svd_rank,
+            svd_steps,
+            group_size,
+            nbits,
+            fast,
+            linear.bias,
+            int8_matmul,
+            device,
+            dtype,
+        )
 
     @classmethod
     def from_weights(
@@ -117,17 +169,37 @@ class HQQSVDLinear(torch.nn.Module):
         svd_steps: int = 8,
         group_size: int = 128,
         nbits: int = 4,
-        fast:bool=True,
-        bias=None
+        fast: bool = True,
+        bias=None,
+        int8_matmul: bool = True,
+        device="cuda",
+        dtype=torch.bfloat16,
     ):
-        if bias is None:
-            # currently no bias is not supported, so we use bias = 0 instead
-            bias = torch.zeros(
-                (weight.shape[0],), dtype=weight.dtype, device=weight.device
-            )
-        return cls(
-            *quantize(weight, svd_rank, svd_steps, group_size, nbits, fast), bias, nbits
+        qlinear = cls(
+            weight.shape[1],
+            weight.shape[0],
+            svd_rank,
+            weight.shape[1] // group_size,
+            nbits,
+            bias is not None,
+            int8_matmul,
+            device,
+            dtype,
         )
+        W_q, svd_up, svd_down, scale, zero = quantize(
+            weight, svd_rank, svd_steps, group_size, nbits, fast
+        )
+        sd = {
+            "weight": W_q,
+            "svd_up": svd_up,
+            "svd_down": svd_down,
+            "scale": scale,
+            "zero_point": zero,
+        }
+        if bias is not None:
+            sd["bias"] = bias
+        qlinear.load_state_dict(sd, strict=False)
+        return qlinear
 
     def add_lora(self, lora):
         self.loras[lora.name] = lora
@@ -166,7 +238,7 @@ class HQQSVDLinear(torch.nn.Module):
         output = scaled_int8_matmul(x_q, W_q, scale_x, scale_w).to(dtype)
         output = output.view(*original_shape[:-1], -1)
 
-        return output + self.bias
+        return output
 
     def forward_int8(self, x: torch.FloatTensor):
         original_shape = x.shape
@@ -183,14 +255,17 @@ class HQQSVDLinear(torch.nn.Module):
         output = torch._int_mm(x_q, W_q).to(dtype) * scale_x * scale_w
         output = output.view(*original_shape[:-1], -1)
 
-        return output + self.bias
+        return output
 
     def _forward(self, x: torch.FloatTensor):
         if self.int8_matmul and x.numel() / x.shape[-1] > 16:
             if TORCH_INT_MM:
-                return self.forward_int8(x)
+                output = self.forward_int8(x)
             if TRITON_INT_MM:
-                return self.forward_int8_triton(x)
+                output = self.forward_int8_triton(x)
+            if self.bias is not None:
+                output += self.bias
+            return output
         return torch.nn.functional.linear(
             x, self.dequantize(apply_lora=True), self.bias
         )
