@@ -118,6 +118,7 @@ class HQQSVDLinear(torch.nn.Module):
         return W_f
 
     def forward_int8(self, x: torch.FloatTensor):
+        original_shape = x.shape
         x = x.view((-1, x.shape[-1]))
         dtype = x.dtype
         W_f = self.dequantize(apply_lora=True).T
@@ -127,10 +128,11 @@ class HQQSVDLinear(torch.nn.Module):
 
         scale_w = torch.amax(W_f.abs(), dim=0, keepdims=True).div_(127)
         W_q = torch.div(W_f, scale_w).round_().clamp_(-128, 127).to(dtype=torch.int8)
-
-        return (torch._int_mm(x_q, W_q).to(dtype) * scale_x * scale_w).unsqueeze(
-            0
-        ) + self.bias
+        
+        output = (torch._int_mm(x_q, W_q).to(dtype) * scale_x * scale_w)
+        output = output.view(*original_shape[:-1], -1)
+        
+        return output + self.bias
 
     def _forward(self, x: torch.FloatTensor):
         if self.int8_matmul and x.numel() / x.shape[-1] >= 16:
