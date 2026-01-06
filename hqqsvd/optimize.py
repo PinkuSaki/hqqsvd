@@ -146,7 +146,7 @@ def optimize_weights_proximal_v2(
     del W_f, W_q, W_r, W_e, scale_prev, zero_prev
     torch.cuda.empty_cache()
 
-    W_q = torch.round(tensor * scale + zero).clamp(min_max[0], min_max[1])
+    W_q = (torch.floor(tensor * scale + zero) + (torch.rand_like(tensor) < (tensor * scale + zero - torch.floor(tensor * scale + zero))).float()).clamp(min_max[0], min_max[1])
 
     return W_q, scale, zero
 
