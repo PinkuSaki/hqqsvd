@@ -1,4 +1,32 @@
+import importlib.util
 import torch
+
+_HAS_TRITON = importlib.util.find_spec("triton") is not None
+
+if _HAS_TRITON:
+    import triton
+    import triton.language as tl
+
+    @triton.jit
+    def _unpack_uint4_kernel(packed_ptr, output_ptr, n_elements, BLOCK: tl.constexpr):
+        pid = tl.program_id(0)
+        offsets = pid * BLOCK + tl.arange(0, BLOCK)
+        mask = offsets < n_elements
+        packed = tl.load(packed_ptr + offsets, mask=mask, other=0)
+        low = packed & 0x0F
+        high = packed >> 4
+        out_offsets = offsets * 2
+        tl.store(output_ptr + out_offsets, low, mask=mask)
+        tl.store(output_ptr + out_offsets + 1, high, mask=mask)
+
+
+def unpack_uint4_triton(packed_tensor: torch.ByteTensor, shape: torch.Size) -> torch.ByteTensor:
+    packed_tensor = packed_tensor.contiguous().view(-1)
+    n_elements = packed_tensor.numel()
+    output = torch.empty(n_elements * 2, device=packed_tensor.device, dtype=torch.uint8)
+    grid = (triton.cdiv(n_elements, 1024),)
+    _unpack_uint4_kernel[grid](packed_tensor, output, n_elements, BLOCK=1024)
+    return output.view(shape)
 
 def pack_uint7(tensor: torch.ByteTensor) -> torch.ByteTensor:
     packed_tensor = tensor.contiguous().view(-1, 8)
@@ -269,4 +297,6 @@ def pack(tensor:torch.ByteTensor, nbits):
     return pack_functions[nbits](tensor)
 
 def unpack(packed_tensor:torch.ByteTensor, shape:torch.Size, nbits:int):
+    if nbits == 4 and packed_tensor.is_cuda and _HAS_TRITON:
+        return unpack_uint4_triton(packed_tensor, shape)
     return unpack_functions[nbits](packed_tensor, shape)
