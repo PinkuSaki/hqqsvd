@@ -4,6 +4,7 @@ from torch import float32, float16, Tensor
 from functools import partial
 from typing import Union
 
+
 # Greedy local search: Only tested with axis==0
 @torch.compile
 def update_scale_grid_search(
@@ -47,17 +48,18 @@ def update_scale_grid_search(
 
     return scale_b
 
+
 # Shrinking operator
 @torch.compile
 def shrink_lp_op(x: Tensor, beta: float, lp_norm: float) -> Tensor:
-    if lp_norm == 1: 
-        #torch.sign(x) * torch.nn.functional.relu(torch.abs(x) - 1.0 / beta)
+    if lp_norm == 1:
+        # torch.sign(x) * torch.nn.functional.relu(torch.abs(x) - 1.0 / beta)
         out = torch.abs(x)
         out.sub_(1.0 / beta).clamp_min_(0.0)
         out.mul_(torch.sign(x))
         return out
     else:
-        #torch.sign(x) * torch.nn.functional.relu(torch.abs(x) - (1.0 / beta) * torch.pow(torch.abs(x), lp_norm - 1))
+        # torch.sign(x) * torch.nn.functional.relu(torch.abs(x) - (1.0 / beta) * torch.pow(torch.abs(x), lp_norm - 1))
         out = torch.abs(x)
         out.sub_((1.0 / beta) * out.pow(lp_norm - 1)).clamp_min_(0.0)
         out.mul_(torch.sign(x))
@@ -146,7 +148,13 @@ def optimize_weights_proximal_v2(
     del W_f, W_q, W_r, W_e, scale_prev, zero_prev
     torch.cuda.empty_cache()
 
-    W_q = (torch.floor(tensor * scale + zero) + (torch.rand_like(tensor) < (tensor * scale + zero - torch.floor(tensor * scale + zero))).float()).clamp(min_max[0], min_max[1])
+    W_q = (
+        torch.floor(tensor * scale + zero)
+        + (
+            torch.rand_like(tensor)
+            < (tensor * scale + zero - torch.floor(tensor * scale + zero))
+        ).float()
+    ).clamp(min_max[0], min_max[1])
 
     return W_q, scale, zero
 

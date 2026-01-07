@@ -1,10 +1,18 @@
 #!/usr/bin/env python3
 import argparse
 import time
+import os
+import sys
+
+# 允许从仓库根目录直接导入本地包
+_REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
 
 import torch
 
 from hqqsvd import quantize as quantize_module
+from hqqsvd import bitpack as bitpack_module
 
 
 def _synchronize_if_cuda(device: torch.device) -> None:
@@ -31,8 +39,8 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--group-size", type=int, default=128)
     parser.add_argument("--svd-rank", type=int, default=128)
     parser.add_argument("--svd-steps", type=int, default=8)
-    parser.add_argument("--warmup", type=int, default=10)
-    parser.add_argument("--iterations", type=int, default=50)
+    parser.add_argument("--warmup", type=int, default=100)
+    parser.add_argument("--iterations", type=int, default=500)
     parser.add_argument("--dtype", default="bfloat16", choices=["bfloat16", "float16"])
     parser.add_argument("--device", default="cuda")
     return parser.parse_args()
@@ -64,7 +72,9 @@ def main() -> None:
         nbits=4,
         fast=True,
     )
-    q_shape = torch.Size((args.out_features, args.in_features // args.group_size, args.group_size))
+    q_shape = torch.Size(
+        (args.out_features, args.in_features // args.group_size, args.group_size)
+    )
     o_shape = torch.Size((args.out_features, args.in_features))
 
     def run_fused() -> torch.Tensor:
@@ -80,9 +90,11 @@ def main() -> None:
         )
 
     original_has_triton = quantize_module._HAS_TRITON
+    original_bitpack_has_triton = bitpack_module._HAS_TRITON
 
     def run_fallback() -> torch.Tensor:
         quantize_module._HAS_TRITON = False
+        bitpack_module._HAS_TRITON = False
         try:
             return quantize_module.dequantize(
                 W_q,
@@ -96,6 +108,7 @@ def main() -> None:
             )
         finally:
             quantize_module._HAS_TRITON = original_has_triton
+            bitpack_module._HAS_TRITON = original_bitpack_has_triton
 
     for _ in range(args.warmup):
         run_fused()
