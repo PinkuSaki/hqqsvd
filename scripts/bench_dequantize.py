@@ -4,7 +4,6 @@ import time
 
 import torch
 
-from hqqsvd import bitpack as bitpack_module
 from hqqsvd import quantize as quantize_module
 
 
@@ -80,12 +79,10 @@ def main() -> None:
             nbits=4,
         )
 
-    original_has_triton_quantize = quantize_module._HAS_TRITON
-    original_has_triton_bitpack = bitpack_module._HAS_TRITON
+    original_has_triton = quantize_module._HAS_TRITON
 
     def run_fallback() -> torch.Tensor:
         quantize_module._HAS_TRITON = False
-        bitpack_module._HAS_TRITON = False
         try:
             return quantize_module.dequantize(
                 W_q,
@@ -98,8 +95,7 @@ def main() -> None:
                 nbits=4,
             )
         finally:
-            quantize_module._HAS_TRITON = original_has_triton_quantize
-            bitpack_module._HAS_TRITON = original_has_triton_bitpack
+            quantize_module._HAS_TRITON = original_has_triton
 
     for _ in range(args.warmup):
         run_fused()

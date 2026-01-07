@@ -1,4 +1,5 @@
 from typing import Tuple
+from functools import lru_cache
 import importlib.util
 import torch
 from .optimize import optimize_weights
@@ -6,7 +7,9 @@ from .bitpack import pack, unpack
 
 _HAS_TRITON = importlib.util.find_spec("triton") is not None
 
-if _HAS_TRITON:
+
+@lru_cache(maxsize=1)
+def _get_dequant_uint4_kernel():
     import triton
     import triton.language as tl
 
@@ -42,6 +45,8 @@ if _HAS_TRITON:
         output = zero + values * scale
         tl.store(output_ptr + offsets, output, mask=mask)
 
+    return _dequant_uint4_kernel
+
 
 def _dequantize_uint4_triton(
     packed_tensor: torch.ByteTensor,
@@ -49,13 +54,16 @@ def _dequantize_uint4_triton(
     zero: torch.Tensor,
     q_shape: torch.Size,
 ) -> torch.Tensor:
+    import triton
+
     packed_tensor = packed_tensor.contiguous().view(-1)
     n_elements = int(q_shape.numel())
     output = torch.empty(n_elements, device=packed_tensor.device, dtype=scale.dtype)
     scale_flat = scale.contiguous().view(-1)
     zero_flat = zero.contiguous().view(-1)
+    kernel = _get_dequant_uint4_kernel()
     grid = (triton.cdiv(n_elements, 1024),)
-    _dequant_uint4_kernel[grid](
+    kernel[grid](
         packed_tensor,
         scale_flat,
         zero_flat,
