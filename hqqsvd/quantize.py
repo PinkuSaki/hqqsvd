@@ -154,8 +154,26 @@ def quantize(
     return W_q, svd_up.to(dtype), svd_down.to(dtype), scale.to(dtype), zero.to(dtype)
 
 
-def dequantize(W_q, svd_up, svd_down, scale, zero, q_shape, o_shape, nbits: int):
-    if nbits == 4 and W_q.is_cuda and scale.is_cuda and zero.is_cuda and _HAS_TRITON:
+def dequantize(
+    W_q,
+    svd_up,
+    svd_down,
+    scale,
+    zero,
+    q_shape,
+    o_shape,
+    nbits: int,
+    use_fused_kernel: bool = True,
+):
+    use_triton = (
+        use_fused_kernel
+        and nbits == 4
+        and W_q.is_cuda
+        and scale.is_cuda
+        and zero.is_cuda
+        and _HAS_TRITON
+    )
+    if use_triton:
         W_f = _dequantize_uint4_triton(W_q, scale, zero, q_shape)
     else:
         W_f = unpack(W_q, q_shape, nbits).to(dtype=scale.dtype)

@@ -75,6 +75,7 @@ class HQQSVDLinear(torch.nn.Module):
         bias: bool = True,
         device=None,
         dtype=torch.bfloat16,
+        use_fused_kernel: bool = True,
     ):
         super().__init__()
 
@@ -130,6 +131,7 @@ class HQQSVDLinear(torch.nn.Module):
         )
 
         self.int8_matmul = int8_matmul
+        self.use_fused_kernel = use_fused_kernel
         self.loras = {}
 
         self.forward_no_comfy = torch.compile(self._forward, fullgraph=True)
@@ -147,6 +149,7 @@ class HQQSVDLinear(torch.nn.Module):
         int8_matmul: bool = True,
         device="cuda",
         dtype=torch.bfloat16,
+        use_fused_kernel: bool = True,
     ):
         return cls.from_weights(
             linear.weight,
@@ -159,6 +162,7 @@ class HQQSVDLinear(torch.nn.Module):
             int8_matmul,
             device,
             dtype,
+            use_fused_kernel,
         )
 
     @classmethod
@@ -174,6 +178,7 @@ class HQQSVDLinear(torch.nn.Module):
         int8_matmul: bool = True,
         device="cuda",
         dtype=torch.bfloat16,
+        use_fused_kernel: bool = True,
     ):
         qlinear = cls(
             weight.shape[1],
@@ -185,6 +190,7 @@ class HQQSVDLinear(torch.nn.Module):
             int8_matmul,
             device,
             dtype,
+            use_fused_kernel=use_fused_kernel,
         )
         W_q, svd_up, svd_down, scale, zero = quantize(
             weight, svd_rank, svd_steps, group_size, nbits, fast
@@ -217,6 +223,7 @@ class HQQSVDLinear(torch.nn.Module):
             self.q_shape,
             self.o_shape,
             self._nbits,
+            use_fused_kernel=self.use_fused_kernel,
         )
         if apply_lora:
             for lora in self.loras.values():
