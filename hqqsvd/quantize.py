@@ -40,7 +40,7 @@ if _HAS_TRITON:
         low = packed & 0x0F
         high = packed >> 4
         is_high = offsets & 1
-        values = tl.where(is_high == 1, high, low).to(tl.float32)
+        values = tl.where(is_high == 1, high, low)
 
         group_stride = n_groups * group_size
         out_feature = offsets // group_stride
@@ -49,6 +49,7 @@ if _HAS_TRITON:
 
         scale = tl.load(scale_ptr + scale_index, mask=mask, other=1.0)
         zero = tl.load(zero_ptr + scale_index, mask=mask, other=0.0)
+        values = values.to(scale.dtype)
         output = zero + values * scale
         tl.store(output_ptr + offsets, output, mask=mask)
 
